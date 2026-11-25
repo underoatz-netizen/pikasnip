@@ -1,0 +1,21 @@
+# Build output
+build/
+dist/
+out/
+.vs/
+
+# Local machine overrides / IDE leftovers
+CMakeUserPresets.json
+*.user
+
+# Never commit private keys
+*.pfx
+*.pvk
+
+# Fetched OCR assets (restored by scripts/fetch-ocr-assets.ps1)
+assets/models/openthai-ocr/
+third_party/onnxruntime/
+third_party/licenses/
+
+# Local planning state
+.planning/
