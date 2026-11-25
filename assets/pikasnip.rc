@@ -1,0 +1,42 @@
+// PikaSnip - Win32 resources (icon + version information).
+//
+// The application manifest is intentionally NOT listed here. It is handed to
+// the linker via CMake (pikasnip_add_app_manifest) so the linker merges it into
+// the generated manifest, and the executable never carries two RT_MANIFEST
+// resources.
+
+#include <winres.h>
+
+#define IDI_PIKASNIP_APP 101
+
+// Multi-size icon: 16x16, 32x32, 48x48 (DIB) + 256x256 (PNG).
+IDI_PIKASNIP_APP ICON "icons\\pikasnip.ico"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION     0,1,0,0
+ PRODUCTVERSION  0,1,0,0
+ FILEFLAGSMASK   0x3fL
+ FILEFLAGS       0x0L
+ FILEOS          VOS_NT_WINDOWS32
+ FILETYPE        VFT_APP
+ FILESUBTYPE     VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName",      "OZ Lab"
+            VALUE "FileDescription",  "PikaSnip"
+            VALUE "FileVersion",      "0.1.0.0"
+            VALUE "InternalName",     "PikaSnip"
+            VALUE "LegalCopyright",   "Copyright (C) 2026 OZ Lab"
+            VALUE "OriginalFilename", "PikaSnip.exe"
+            VALUE "ProductName",      "PikaSnip"
+            VALUE "ProductVersion",   "0.1.0.0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END
