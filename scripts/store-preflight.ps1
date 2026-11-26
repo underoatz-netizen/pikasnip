@@ -1,9 +1,8 @@
 <#
-.SYNOPSIS  Microsoft Store pre-upload gate for OZ LAB Windows apps (Windows PowerShell 5.1).
-.DESCRIPTION  Read-only. 10 invariants, one PASS / FAIL / WARN line each, then a summary; exit 1 on any FAIL.
-  No external dependencies (built-in cmdlets + System.Drawing only). Store IDs quoted by internal
-  packaging/store/ docs are WARN; a leak in any other tracked public file is FAIL.
-.PARAMETER SkipHttp  Skip the network probe.  .PARAMETER SkipGit  Skip git; checks 4 and 8 WARN, not FAIL.
+.SYNOPSIS  Microsoft Store pre-upload gate for OZ LAB Windows apps (Windows PowerShell 5.1). Read-only.
+.DESCRIPTION  10 invariants, one PASS/FAIL/WARN line each, then a summary; exit 1 on any FAIL; Store IDs in
+  internal packaging/store/ docs are WARN, a leak in any other tracked public file is FAIL.
+.PARAMETER SkipHttp  Skip the network probe.  .PARAMETER SkipGit  Skip git; checks 4, 8 and 9 WARN.
 .EXAMPLE  powershell -ExecutionPolicy Bypass -File scripts\store-preflight.ps1
 #>
 [CmdletBinding()]
@@ -11,7 +10,6 @@ param(
     [string]$DistPath = '.\dist', [string]$RepoRoot = '',
     [string]$PrivacyUrl = 'https://ozlab.pages.dev/privacy-pikasnip', [switch]$SkipHttp, [switch]$SkipGit
 )
-
 $ErrorActionPreference = 'Continue'; $script:P = 0; $script:W = 0; $script:F = 0
 $ShaRec = '^\s*([0-9A-Fa-f]{64})(\s+\*?(.+?))?\s*$'; $StoreSite = 'apps.' + 'microsoft' + '.com'
 function Report([string]$Status, [string]$Id, [string]$Message) {
@@ -19,12 +17,12 @@ function Report([string]$Status, [string]$Id, [string]$Message) {
     Write-Output ("{0} [{1}] {2}" -f $Status, $Id, $Message)
 }
 function Read-Sha([string]$Path) {
-    $r = @(); $bad = 0; $n = 0
-    foreach ($ln in [IO.File]::ReadAllLines($Path)) {
-        $n++; if ($ln.Trim() -eq '') { continue }
+    $r = @(); $bad = 0; $lines = [IO.File]::ReadAllLines($Path)
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $ln = $lines[$i].Trim(); if ($ln -eq '') { continue }
         $m = [regex]::Match($ln, $ShaRec)
-        if (-not $m.Success) { $bad = $n; break }
-        $r += [pscustomobject]@{ Hash = $m.Groups[1].Value.ToUpperInvariant(); Name = $m.Groups[3].Value }
+        if (-not $m.Success) { $bad = $i + 1; break }
+        $r += [pscustomobject]@{ Hash = $m.Groups[1].Value.ToUpperInvariant(); Name = $m.Groups[3].Value.Trim(); Line = $i + 1 }
     }
     [pscustomobject]@{ Records = $r; Bad = $bad; Count = $r.Count }
 }
@@ -36,33 +34,39 @@ function Test-Image([string]$Path, [int]$W, [int]$H) {
         return ''
     } catch { return 'cannot be decoded' } finally { if ($null -ne $img) { $img.Dispose() } }
 }
-
-if ([string]::IsNullOrWhiteSpace($RepoRoot)) { $RepoRoot = [IO.Path]::GetDirectoryName($PSScriptRoot) }
-elseif (-not [IO.Path]::IsPathRooted($RepoRoot)) { $RepoRoot = [IO.Path]::Combine((Get-Location).Path, $RepoRoot) }
+if ([string]::IsNullOrWhiteSpace($RepoRoot)) { $RepoRoot = [IO.Path]::GetDirectoryName($PSScriptRoot) } elseif (-not [IO.Path]::IsPathRooted($RepoRoot)) { $RepoRoot = [IO.Path]::Combine((Get-Location).Path, $RepoRoot) }
 $RepoRoot = [IO.Path]::GetFullPath($RepoRoot)
-if (-not [IO.Path]::IsPathRooted($DistPath)) { $DistPath = [IO.Path]::Combine($RepoRoot, $DistPath) }
-$DistPath = [IO.Path]::GetFullPath($DistPath)
+if (-not [IO.Path]::IsPathRooted($DistPath)) { $DistPath = [IO.Path]::Combine($RepoRoot, $DistPath) }; $DistPath = [IO.Path]::GetFullPath($DistPath)
 Write-Output ("REPO {0}" -f $RepoRoot); Write-Output ("DIST {0}" -f $DistPath); Write-Output ''
 
-# git access: -z emits raw paths (no C-quoting) so non-ASCII and newline names survive
-$tracked = @(); $gitOk = $false; $gitWhy = 'skipped (-SkipGit)'
-$git = if ($SkipGit) { $null } else { Get-Command git -ErrorAction SilentlyContinue }
-if (-not $SkipGit) {
-    if (-not $git) { $gitWhy = 'git unavailable' }
-    else {
-        $out = @(& git -c core.quotepath=false -C $RepoRoot ls-files -z 2>$null); $rc = $LASTEXITCODE
-        if ($rc -ne 0) { $gitWhy = ("git ls-files failed (exit {0})" -f $rc) }
-        else { $tracked = @((($out -join "`n") -split "`0") | Where-Object { $_ -ne '' }); $gitOk = $true }
+# git state, resolved once: every call's exit code is kept so one success cannot mask another failure
+$tracked = @(); $ignored = @(); $dirty = @(); $gitFail = @(); $gitWhy = 'skipped (-SkipGit)'
+$enc = [Console]::OutputEncoding
+try {
+    if (-not $SkipGit) {
+        try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false) } catch { }
+        if (-not (Get-Command git -ErrorAction SilentlyContinue)) { $gitFail += 'git unavailable' }
+        else {
+            $o = @(& git -c core.quotepath=false -C $RepoRoot ls-files -z 2>$null); $rc = $LASTEXITCODE
+            if ($rc -ne 0) { $gitFail += ("git ls-files exit {0}" -f $rc) }
+            else { $tracked = @((($o -join "`n") -split "`0") | Where-Object { $_ -ne '' }) }
+            $o = @(& git -c core.quotepath=false -C $RepoRoot ls-files --others --ignored --exclude-standard -z 2>$null); $rc = $LASTEXITCODE
+            if ($rc -ne 0) { $gitFail += ("git ls-files --others --ignored exit {0}" -f $rc) }
+            else { $ignored = @((($o -join "`n") -split "`0") | Where-Object { $_ -ne '' }) }
+            $o = @(& git -c core.quotepath=false -C $RepoRoot status --porcelain 2>$null); $rc = $LASTEXITCODE
+            if ($rc -ne 0) { $gitFail += ("git status --porcelain exit {0}" -f $rc) }
+            else { $dirty = @($o | Where-Object { $_ -ne '' }) }
+        }
     }
-}
-
+} finally { [Console]::OutputEncoding = $enc }
+if ($gitFail.Count -gt 0) { $gitWhy = ($gitFail -join '; ') }
 $msix = @()   # 1 - exactly one Store package
 if (Test-Path -LiteralPath $DistPath -PathType Container) { $msix = @(Get-ChildItem -LiteralPath $DistPath -Filter '*_Store.msix' -File -ErrorAction SilentlyContinue) }
 if ($msix.Count -eq 1) { Report 'PASS' '1-msix' ("{0} ({1} bytes)" -f $msix[0].Name, $msix[0].Length) }
 elseif ($msix.Count -eq 0) { Report 'FAIL' '1-msix' ("no *_Store.msix in {0}" -f $DistPath) }
 else { Report 'FAIL' '1-msix' ("expected exactly one *_Store.msix, found {0}: {1}" -f $msix.Count, (($msix | ForEach-Object { $_.Name }) -join ', ')) }
-
-if ($msix.Count -eq 1) {   # 2 - SHA-256: one well-formed record, optional '*name' must be this package
+if ($msix.Count -ne 1) { Report 'WARN' '2-hash' 'skipped: no *_Store.msix selected' }   # 2 - SHA-256 sidecar
+else {
     $shaFile = $msix[0].FullName + '.sha256'
     if (-not (Test-Path -LiteralPath $shaFile)) { Report 'FAIL' '2-hash' ("missing {0}" -f ([IO.Path]::GetFileName($shaFile))) }
     else {
@@ -80,58 +84,65 @@ if ($msix.Count -eq 1) {   # 2 - SHA-256: one well-formed record, optional '*nam
         } catch { Report 'FAIL' '2-hash' ("cannot verify: {0}" -f $_.Exception.Message) }
     }
 }
-
-$mfText = ''; $mfFromPkg = $true   # 3 - manifest inside the package, parsed as XML
-if ($msix.Count -eq 1) {
+# 3 - manifest comes from the package only; the repo copy is diagnostics, never a PASS path
+$mfText = ''; $mfErr = ''
+if ($msix.Count -ne 1) { $mfErr = 'no *_Store.msix selected' }
+else {
     $zip = $null
     try {
         Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction Stop
         $zip = [System.IO.Compression.ZipFile]::OpenRead($msix[0].FullName)
-        $sr = New-Object IO.StreamReader($zip.GetEntry('AppxManifest.xml').Open())
+        $entry = $zip.GetEntry('AppxManifest.xml')
+        if ($null -eq $entry) { throw 'AppxManifest.xml missing from package' }
+        $sr = New-Object IO.StreamReader($entry.Open())
         try { $mfText = $sr.ReadToEnd() } finally { $sr.Dispose() }
-    } catch { $mfText = '' } finally { if ($null -ne $zip) { $zip.Dispose() } }
+    } catch { $mfErr = $_.Exception.Message } finally { if ($null -ne $zip) { $zip.Dispose() } }
 }
-if (-not $mfText) {
-    $mfFromPkg = $false; $manifestPath = [IO.Path]::Combine($RepoRoot, 'packaging\msix\AppxManifest.xml')
-    if (Test-Path -LiteralPath $manifestPath) { $mfText = [IO.File]::ReadAllText($manifestPath) }
-}
-if (-not $mfText) { Report 'FAIL' '3-manifest' 'manifest unreadable: not in the package, packaging\msix\AppxManifest.xml not found' }
-else {
+if ([string]::IsNullOrWhiteSpace($mfText)) {
+    if (-not $mfErr) { $mfErr = 'AppxManifest.xml is empty' }
+    $rp = [IO.Path]::Combine($RepoRoot, 'packaging\msix\AppxManifest.xml')
+    $diag = if (Test-Path -LiteralPath $rp) { 'repo copy is diagnostics only: packaging\msix\AppxManifest.xml' } else { 'repo copy packaging\msix\AppxManifest.xml also missing' }
+    Report 'FAIL' '3-manifest' ("package manifest unusable ({0}); {1}" -f $mfErr, $diag)
+} else {
     try {
         [xml]$doc = $mfText; $missing = @()
-        if ($doc.SelectNodes("//*[local-name()='Capability' and @Name='runFullTrust']").Count -eq 0) { $missing += 'runFullTrust capability' }
-        if ($doc.SelectNodes("//*[local-name()='StartupTask' and translate(@Enabled,'FALSE','false')='false']").Count -eq 0) { $missing += 'StartupTask Enabled="false"' }
+        if ($doc.SelectNodes("//*[local-name()='Capabilities']/*[local-name()='Capability' and @Name='runFullTrust']").Count -eq 0) { $missing += 'Capabilities/runFullTrust' }
         $idn = $doc.SelectSingleNode("//*[local-name()='Identity']")
-        if (-not $idn -or -not $idn.GetAttribute('Name')) { $missing += 'Identity Name=' }
-        if (-not $idn -or -not $idn.GetAttribute('Version')) { $missing += 'Identity Version=' }
+        if (-not $idn -or [string]::IsNullOrWhiteSpace($idn.GetAttribute('Name'))) { $missing += 'Identity Name=' }
+        if (-not $idn -or [string]::IsNullOrWhiteSpace($idn.GetAttribute('Version'))) { $missing += 'Identity Version=' }
         if (-not $idn -or $idn.GetAttribute('ProcessorArchitecture') -ne 'x64') { $missing += 'ProcessorArchitecture="x64"' }
-        if ($missing.Count -eq 0) { Report 'PASS' '3-manifest' ("{0}: runFullTrust + StartupTask Enabled=`"false`" + Name/Version/x64" -f $(if ($mfFromPkg) { 'package manifest' } else { 'repo manifest' })) }
-        else { Report 'FAIL' '3-manifest' ("missing: {0}" -f ($missing -join ', ')) }
-    } catch { Report 'FAIL' '3-manifest' ("XML parse failed: {0}" -f $_.Exception.Message) }
-    if (-not $mfFromPkg) { Report 'WARN' '3-manifest' 'package manifest could not be read - verified packaging\msix\AppxManifest.xml instead' }
+        $st = @($doc.SelectNodes("//*[local-name()='StartupTask']"))
+        if ($st.Count -eq 0) { $missing += 'StartupTask node' }
+        elseif (@($st | Where-Object { $_.GetAttribute('Enabled') -ne 'false' }).Count -gt 0) { $missing += 'every StartupTask Enabled="false"' }
+        if ($missing.Count -eq 0) { Report 'PASS' '3-manifest' 'package manifest: runFullTrust + StartupTask Enabled="false" + Name/Version/x64' }
+        else { Report 'FAIL' '3-manifest' ("package manifest missing: {0}" -f ($missing -join ', ')) }
+    } catch { Report 'FAIL' '3-manifest' ("package manifest XML parse failed: {0}" -f $_.Exception.Message) }
 }
-$idPattern = '9' + 'PG[0-9A-Z]{10}' + '|' + ($StoreSite -replace '\.', '\.')   # 4 - Store ID leak scan
+# 4 - Store ID leak scan (regex assembled so the script never matches itself)
+$idPattern = '9' + 'PG[0-9A-Z]{9,11}' + '|' + ($StoreSite -replace '\.', '\.')
 $textExt = @('.md', '.txt', '.html', '.htm', '.json', '.xml', '.ps1', '.psm1', '.cmd', '.bat', '.yml', '.yaml', '.cs', '.cpp', '.h', '.hpp', '.rc', '.cmake', '.iss', '.nsi', '.props', '.targets', '.js', '.css', '.svg')
-if (-not $gitOk) { Report 'FAIL' '4-storeid' ("cannot verify ({0}) - Store ID / {1} leak scan not run" -f $gitWhy, $StoreSite) }
+if ($SkipGit) { Report 'WARN' '4-storeid' 'skipped (-SkipGit)' }
+elseif ($gitFail.Count -gt 0) { Report 'FAIL' '4-storeid' ("cannot verify ({0}) - Store ID / Store domain leak scan not run" -f $gitWhy) }
 else {
-    $leaks = @(); $internal = @()
+    $leaks = @(); $internal = @(); $unread = @()
     foreach ($rel in $tracked) {
         $norm = $rel -replace '\\', '/'
         if ([string]::IsNullOrWhiteSpace($rel) -or $norm -match '^(\.planning|dist|third_party|build)/') { continue }
         if ($textExt -notcontains [IO.Path]::GetExtension($norm).ToLowerInvariant() -and [IO.Path]::GetFileName($norm) -ne 'CMakeLists.txt') { continue }
         $full = [IO.Path]::Combine($RepoRoot, ($rel -replace '/', '\'))
-        if (-not (Test-Path -LiteralPath $full)) { continue }
-        foreach ($hit in @(Select-String -LiteralPath $full -Pattern $idPattern -ErrorAction SilentlyContinue)) {
-            if ($norm -match '^packaging/store/') { $internal += ("{0}:{1}" -f $norm, $hit.LineNumber) }
+        try { $lines = [IO.File]::ReadAllLines($full) } catch { $unread += $norm; continue }
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -notmatch $idPattern) { continue }
+            if ($norm -match '^packaging/store/') { $internal += ("{0}:{1}" -f $norm, ($i + 1)) }
             elseif ($leaks -notcontains $norm) { $leaks += $norm }
         }
     }
-    if ($leaks.Count -gt 0) { Report 'FAIL' '4-storeid' ("Store ID / {0} in public files: {1}" -f $StoreSite, ($leaks -join ', ')) }
-    else { Report 'PASS' '4-storeid' 'no Store ID or Store link in tracked public files' }
+    if ($leaks.Count -gt 0) { Report 'FAIL' '4-storeid' ("Store ID / Store domain in public files: {0}" -f ($leaks -join ', ')) }
+    elseif ($unread.Count -eq 0) { Report 'PASS' '4-storeid' 'no Store ID or Store link in tracked public files' }
+    if ($unread.Count -gt 0) { Report 'WARN' '4-storeid' ("scan incomplete - unreadable: {0}" -f ($unread -join ', ')) }
     if ($internal.Count -gt 0) { Report 'WARN' '4-storeid' ("internal doc(s) mention the Store ID (keep unpublished): {0}" -f ($internal -join ', ')) }
 }
-# 5 - screenshots: 4 exact names, valid PNG, exactly 1920x1080
-$shotNames = @('01-capture-magnifier.png', '02-annotations-toolbar.png', '03-floating-pin-edit.png', '04-offline-thai-en-ocr.png')
+$shotNames = @('01-capture-magnifier.png', '02-annotations-toolbar.png', '03-floating-pin-edit.png', '04-offline-thai-en-ocr.png')   # 5 - 4 exact names, PNG, 1920x1080
 $shotDir = [IO.Path]::Combine($DistPath, 'store-screenshots'); $drawOk = $true
 try { Add-Type -AssemblyName System.Drawing -ErrorAction Stop }
 catch { $drawOk = $false; Report 'FAIL' '5-shots' ("System.Drawing could not be loaded: {0}" -f $_.Exception.Message) }
@@ -144,8 +155,7 @@ if ($drawOk) { $bad = @()
     }
     if ($bad.Count -eq 0) { Report 'PASS' '5-shots' '4 PNG screenshots, all 1920x1080' } else { Report 'FAIL' '5-shots' ($bad -join '; ') }
 }
-# 6 - Store listing logo 300x300 and really PNG
-$logoPath = [IO.Path]::Combine($RepoRoot, 'packaging\store\StoreLogo-300x300.png')
+$logoPath = [IO.Path]::Combine($RepoRoot, 'packaging\store\StoreLogo-300x300.png')   # 6 - Store listing logo 300x300, really PNG
 if (-not $drawOk) { Report 'FAIL' '6-logo' 'System.Drawing unavailable - cannot verify StoreLogo-300x300.png' }
 elseif (-not (Test-Path -LiteralPath $logoPath)) { Report 'FAIL' '6-logo' 'packaging\store\StoreLogo-300x300.png not found' }
 else { $why = Test-Image $logoPath 300 300
@@ -162,36 +172,36 @@ else {
     elseif ($null -ne $status) { Report 'FAIL' '7-privacy' ("HTTP {0} {1}" -f $status, $PrivacyUrl) }
     else { Report 'FAIL' '7-privacy' ("unreachable {0}: {1}" -f $PrivacyUrl, $err) }
 }
-# 8 - no private keys / model or binary blobs tracked
-if (-not $gitOk) { Report 'FAIL' '8-binaries' ("cannot verify ({0}) - tracked/ignored binary scan not run" -f $gitWhy) }
+# 8 - no private keys / model or binary blobs tracked or sitting ignored on disk
+if ($SkipGit) { Report 'WARN' '8-binaries' 'skipped (-SkipGit)' }
+elseif ($gitFail.Count -gt 0) { Report 'FAIL' '8-binaries' ("cannot verify ({0}) - tracked/ignored binary scan not run" -f $gitWhy) }
 else {
     $binTracked = @($tracked | Where-Object { $_ -match '(?i)\.(pfx|pvk|onnx|dll)$' })
     if ($binTracked.Count -gt 0) { Report 'FAIL' '8-binaries' ("tracked binaries: {0}" -f ($binTracked -join ', ')) }
     else { Report 'PASS' '8-binaries' 'no .pfx/.pvk/.onnx/.dll tracked' }
-    $ign = @(((& git -c core.quotepath=false -C $RepoRoot ls-files --others --ignored --exclude-standard -z 2>$null) -join "`n") -split "`0" | Where-Object { $_ -match '(?i)\.(pfx|pvk|onnx|dll)$' })
-    if ($LASTEXITCODE -ne 0) { Report 'WARN' '8-binaries' ("cannot list ignored files (git exit {0})" -f $LASTEXITCODE) }
-    elseif ($ign.Count -gt 0) { Report 'WARN' '8-binaries' ("{0} ignored binary file(s) on disk, untracked (expected for third_party/ payload)" -f $ign.Count) }
+    $ign = @($ignored | Where-Object { $_ -match '(?i)\.(pfx|pvk|onnx|dll)$' })
+    if ($ign.Count -gt 0) { Report 'WARN' '8-binaries' ("{0} ignored binary file(s) on disk, untracked (expected for third_party/ payload)" -f $ign.Count) }
 }
 # 9 - working tree state (informational only, never FAIL)
-if ($SkipGit -or -not $git) { Report 'WARN' '9-git' ("skipped ({0})" -f $gitWhy) }
-else {
-    $dirty = @(& git -c core.quotepath=false -C $RepoRoot status --porcelain 2>$null); $rc = $LASTEXITCODE
-    if ($rc -ne 0) { Report 'WARN' '9-git' ("unknown working tree state (git status exit {0})" -f $rc) }
-    elseif ($dirty.Count -eq 0) { Report 'PASS' '9-git' 'working tree clean' }
-    else { Report 'WARN' '9-git' ("{0} changed/untracked entr(ies) - confirm none are artifacts" -f $dirty.Count) }
-}
-# 10 - SHA256SUMS.txt coverage
+if ($SkipGit) { Report 'WARN' '9-git' 'skipped (-SkipGit)' }
+elseif ($gitFail.Count -gt 0) { Report 'WARN' '9-git' ("unknown working tree state ({0})" -f $gitWhy) }
+elseif ($dirty.Count -eq 0) { Report 'PASS' '9-git' 'working tree clean' }
+else { Report 'WARN' '9-git' ("{0} changed/untracked entr(ies) - confirm none are artifacts" -f $dirty.Count) }
+# 10 - SHA256SUMS.txt must list the selected package by exact filename
 $sumsPath = [IO.Path]::Combine($DistPath, 'SHA256SUMS.txt')
 if (-not (Test-Path -LiteralPath $sumsPath)) { Report 'WARN' '10-sums' ("{0} not found" -f ([IO.Path]::GetFileName($sumsPath))) }
 else {
     try {
         $s = Read-Sha $sumsPath; $names = @($s.Records | Where-Object { $_.Name } | ForEach-Object { $_.Name })
-        if ($s.Count -eq 0) { Report 'FAIL' '10-sums' 'SHA256SUMS.txt is empty' }
-        elseif ($s.Bad) { Report 'FAIL' '10-sums' ("malformed line {0} in SHA256SUMS.txt" -f $s.Bad) }
-        elseif (@($names | Where-Object { $_ -match '(?i)_Store\.msix$' }).Count -eq 0) { Report 'FAIL' '10-sums' 'no *_Store.msix entry listed in SHA256SUMS.txt' }
+        $hashOnly = @($s.Records | Where-Object { -not $_.Name })
+        if ($s.Bad) { Report 'FAIL' '10-sums' ("malformed line {0} in SHA256SUMS.txt" -f $s.Bad) }
+        elseif ($s.Count -eq 0) { Report 'FAIL' '10-sums' 'SHA256SUMS.txt is empty' }
+        elseif ($hashOnly.Count -gt 0) { Report 'FAIL' '10-sums' ("line {0} has a hash but no filename" -f $hashOnly[0].Line) }
+        elseif ($msix.Count -ne 1) { Report 'FAIL' '10-sums' 'no *_Store.msix selected - cannot match a record' }
+        elseif (@($s.Records | Where-Object { $_.Name -ieq $msix[0].Name }).Count -eq 0) { Report 'FAIL' '10-sums' ("no record for {0} (listed: {1})" -f $msix[0].Name, ($names -join ', ')) }
         else {
             $missingFiles = @($names | Where-Object { -not (Test-Path -LiteralPath ([IO.Path]::Combine($DistPath, ($_ -replace '/', '\')))) })
-            if ($missingFiles.Count -eq 0) { Report 'PASS' '10-sums' ("{0} entries, all listed files present" -f $names.Count) } else { Report 'WARN' '10-sums' ("{0} entries, missing: {1}" -f $names.Count, ($missingFiles -join ', ')) }
+            if ($missingFiles.Count -eq 0) { Report 'PASS' '10-sums' ("{0} entries incl. {1}, all listed files present" -f $names.Count, $msix[0].Name) } else { Report 'WARN' '10-sums' ("{0} entries, missing: {1}" -f $names.Count, ($missingFiles -join ', ')) }
         }
     } catch { Report 'FAIL' '10-sums' ("cannot verify: {0}" -f $_.Exception.Message) }
 }

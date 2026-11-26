@@ -67,8 +67,9 @@ Partner Center. Cloudflare Pages redirects `/page.html` → `/page`, so test the
 
 ## 7. Restricted capability `runFullTrust`
 
-Paste `runfulltrust-485.txt` (after substituting `{{APP_NAME}}`) into the restricted-capability
-field. The field truncates mid-word at roughly 500 characters, so **stay ≤ 485 characters** and
+Paste `runfulltrust-485.txt` into the restricted-capability field after replacing `{{APP_NAME}}`,
+`{{REASON_1}}`…`{{REASON_4}}`, and `{{PRIVACY_STATEMENT}}` (the template is no longer APP_NAME-only).
+The field truncates mid-word at roughly 500 characters, so **stay ≤ 485 characters** and
 re-verify the count after substituting a longer app name.
 
 Full detail — reviewer steps, data paths, `StartupTask` behaviour — goes into **Notes for
@@ -108,11 +109,11 @@ files that are meant to be public.
 ## runFullTrust field (Partner Center)
 
 - The restricted-capability form field **truncates at ~500 characters** (observed: cut mid-word at char 499).
-- Fill `runfulltrust-485.txt`: replace `{{APP_NAME}}`, the four `{{REASON_n}}` slots (each a concrete capability the app cannot do in a sandbox), and `{{PRIVACY_STATEMENT}}` (one verifiable sentence, e.g. "The app collects no telemetry and makes zero network connections." โ€” only if true).
-- **Recount after substitution: must be โค 485 characters.** Use `(Get-Content -Raw <file>).Length`.
-- Put the full detail (verification steps for reviewers, storage paths, startup behaviour) in **Notes for certification** โ€” that field has no tight limit.
+- Fill `runfulltrust-485.txt`: replace `{{APP_NAME}}`, the four `{{REASON_n}}` slots (each a concrete capability the app cannot do in a sandbox), and `{{PRIVACY_STATEMENT}}` (one verifiable sentence, e.g. "The app collects no telemetry and makes zero network connections." — only if true).
+- **Recount after substitution: must be ≤ 485 characters.** Use `(Get-Content -Raw <file>).Length`.
+- Put the full detail (verification steps for reviewers, storage paths, startup behaviour) in **Notes for certification** — that field has no tight limit.
 
-### Worked example (accepted by Microsoft for PikaSnip 0.1.0, 475 chars)
+### Worked example (accepted by Microsoft for PikaSnip 0.1.0, 471 chars)
 ```
 PikaSnip requires full trust for native desktop integration: (1) screen capture across multiple monitors and mixed-DPI displays (DXGI Desktop Duplication with GDI fallback); (2) system-wide global hotkeys and a system tray icon while running in the background; (3) always-on-top layered pin windows that float above other applications; (4) offline Thai/English OCR that lazily loads app-local native DLLs. The app collects no telemetry and makes zero network connections.
 ```
