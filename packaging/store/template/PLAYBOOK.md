@@ -104,3 +104,15 @@ files that are meant to be public.
    `false` and let the user opt in from the tray menu.
 8. **Telemetry wording.** If the app truly makes zero network calls, say so consistently in the
    listing, privacy policy, and certification notes — contradictions stall certification.
+
+## runFullTrust field (Partner Center)
+
+- The restricted-capability form field **truncates at ~500 characters** (observed: cut mid-word at char 499).
+- Fill `runfulltrust-485.txt`: replace `{{APP_NAME}}`, the four `{{REASON_n}}` slots (each a concrete capability the app cannot do in a sandbox), and `{{PRIVACY_STATEMENT}}` (one verifiable sentence, e.g. "The app collects no telemetry and makes zero network connections." โ€” only if true).
+- **Recount after substitution: must be โค 485 characters.** Use `(Get-Content -Raw <file>).Length`.
+- Put the full detail (verification steps for reviewers, storage paths, startup behaviour) in **Notes for certification** โ€” that field has no tight limit.
+
+### Worked example (accepted by Microsoft for PikaSnip 0.1.0, 475 chars)
+```
+PikaSnip requires full trust for native desktop integration: (1) screen capture across multiple monitors and mixed-DPI displays (DXGI Desktop Duplication with GDI fallback); (2) system-wide global hotkeys and a system tray icon while running in the background; (3) always-on-top layered pin windows that float above other applications; (4) offline Thai/English OCR that lazily loads app-local native DLLs. The app collects no telemetry and makes zero network connections.
+```
