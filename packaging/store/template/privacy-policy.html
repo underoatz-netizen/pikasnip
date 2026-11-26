@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy Policy — {{APP_NAME}}</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --text: #0f172a;
+      --muted: #475569;
+      --border: #e2e8f0;
+      --accent: #0284c7;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0b1120;
+        --surface: #111827;
+        --text: #f1f5f9;
+        --muted: #94a3b8;
+        --border: #1e293b;
+        --accent: #38bdf8;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 24px 16px 48px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans Thai", sans-serif;
+      line-height: 1.65;
+      background: var(--bg);
+      color: var(--text);
+    }
+    main {
+      max-width: 760px;
+      margin: 0 auto;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 28px 28px 32px;
+    }
+    h1 { margin: 0 0 4px; font-size: 1.75rem; line-height: 1.25; }
+    h2 {
+      margin: 24px 0 8px;
+      font-size: 1.15rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 4px;
+    }
+    .meta { margin: 0 0 20px; font-size: 0.92rem; color: var(--muted); }
+    .summary {
+      padding: 12px 16px;
+      border-left: 4px solid var(--accent);
+      border-radius: 6px;
+      margin: 16px 0 20px;
+      background: var(--bg);
+    }
+    ul { padding-left: 20px; margin: 8px 0; }
+    code {
+      font-family: Consolas, "Cascadia Mono", monospace;
+      font-size: 0.9em;
+      padding: 1px 5px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+    }
+    a { color: var(--accent); }
+    hr { border: 0; border-top: 1px solid var(--border); margin: 32px 0; }
+    footer { margin-top: 28px; font-size: 0.88rem; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Privacy Policy — {{APP_NAME}}</h1>
+      <p class="meta">Publisher: {{PUBLISHER}} &middot; Last updated: {{LAST_UPDATED}}</p>
+    </header>
+
+    <div class="summary">
+      <strong>Short version:</strong> {{APP_NAME}} runs entirely on your Windows device.
+      It collects <strong>no personal data</strong>, uses <strong>no telemetry or analytics</strong>,
+      displays <strong>no ads</strong>, and makes <strong>no network connections</strong>.
+    </div>
+
+    <section>
+      <h2>1. What we collect</h2>
+      <p>
+        {{APP_NAME}} does <strong>not</strong> collect, transmit, sell, or share any personal or
+        usage data. There are no accounts, no sign-ins, no advertising SDKs, no third-party trackers,
+        and no crash-report uploads. Everything the app processes stays on your device.
+      </p>
+    </section>
+
+    <section>
+      <h2>2. Local storage</h2>
+      <p>Files are written only on your own device, and only where listed here:</p>
+      <ul>
+        <li><strong>Settings:</strong> stored locally in <code>settings.json</code> under the app's
+          per-user data folder (for MSIX/Store installs: <code>%LOCALAPPDATA%\{{PUBLISHER}}\{{APP_NAME}}</code>).</li>
+        <li><strong>Saved output:</strong> written to the folder you choose, and only when you
+          explicitly save or export.</li>
+        <li><strong>Clipboard:</strong> read or written only when you explicitly trigger a copy,
+          paste, or export action.</li>
+      </ul>
+      <p>Deleting these files, or uninstalling the app, removes the stored data.</p>
+    </section>
+
+    <section>
+      <h2>3. Local processing (capture, OCR, export)</h2>
+      <p>
+        All capture, image processing, text recognition, and file export run
+        <strong>entirely on your device</strong>. Any recognition models or engine files that ship
+        with the app are loaded locally. Captured pixels, recognised text, and exported files are
+        never uploaded to {{PUBLISHER}} or to any third party.
+      </p>
+    </section>
+
+    <section>
+      <h2>4. No telemetry, no network</h2>
+      <p>
+        {{APP_NAME}} contains no analytics, no usage counters, no remote configuration, and no
+        background network requests. It does not require an internet connection to work, and it does
+        not send diagnostics anywhere.
+      </p>
+    </section>
+
+    <section>
+      <h2>5. Children's privacy</h2>
+      <p>
+        Because {{APP_NAME}} collects no personal information at all, it does not knowingly collect
+        information from anyone, including children under 13.
+      </p>
+    </section>
+
+    <section>
+      <h2>6. Changes and contact</h2>
+      <p>
+        If a future version changes how data is handled, this policy will be updated with a new
+        "last updated" date before that version is released. For questions about this policy or the
+        app, contact {{PUBLISHER}} at <a href="{{CONTACT_URL}}">{{CONTACT_URL}}</a>.
+      </p>
+    </section>
+
+    <hr>
+
+    <section lang="th">
+      <h2>สรุปภาษาไทย</h2>
+      <p>
+        {{APP_NAME}} ทำงานบนเครื่องของคุณทั้งหมด ไม่เก็บข้อมูลส่วนบุคคล ไม่มี telemetry หรือสถิติ
+        การใช้งาน ไม่มีโฆษณา และไม่เชื่อมต่อเครือข่าย ข้อมูลการตั้งค่าถูกเก็บไว้ในเครื่องเท่านั้น
+        และจะบันทึกไฟล์เมื่อคุณสั่งบันทึกเอง การจับภาพ การอ่านข้อความ (OCR) และการส่งออกไฟล์
+        ประมวลผลในเครื่อง 100% ไม่มีการอัปโหลดภาพหรือข้อความออกจากเครื่อง
+      </p>
+      <p>
+        หากมีคำถามเกี่ยวกับนโยบายนี้ ติดต่อ {{PUBLISHER}} ได้ที่
+        <a href="{{CONTACT_URL}}">{{CONTACT_URL}}</a>
+      </p>
+    </section>
+
+    <footer>
+      &copy; {{PUBLISHER}} &middot; {{APP_NAME}} &middot; {{LAST_UPDATED}}
+    </footer>
+  </main>
+</body>
+</html>
